@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -398,6 +398,173 @@ class BudgetingTestCase(APITestCase):
         self.assertEqual(january["activity"], Decimal("0.00"))
         self.assertEqual(february["activity"], Decimal("-75.00"))
         self.client.delete(reverse("transaction-detail", args=[transaction_id]))
+        self.assertEqual(
+            category_budget_rows(self.user, date(2026, 2, 1))[0]["activity"],
+            Decimal("0.00"),
+        )
+
+    def test_transaction_api_persists_counterparty_details_and_time(self):
+        created = self.client.post(
+            reverse("transaction-list"),
+            {
+                "transaction_type": "expense",
+                "date": "2026-09-22",
+                "transaction_time": "18:45",
+                "amount": "35.50",
+                "account": self.bank.id,
+                "category": self.category.id,
+                "counterparty": "Empresa de luz",
+                "memo": "Factura de septiembre",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(created.data["counterparty"], "Empresa de luz")
+        self.assertEqual(created.data["transaction_time"], "18:45:00")
+        self.assertEqual(created.data["memo"], "Factura de septiembre")
+
+        updated = self.client.patch(
+            reverse("transaction-detail", args=[created.data["id"]]),
+            {"counterparty": "Cooperativa eléctrica", "transaction_time": "19:10"},
+            format="json",
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK)
+        transaction = FinancialTransaction.objects.get(id=created.data["id"])
+        self.assertEqual(transaction.counterparty, "Cooperativa eléctrica")
+        self.assertEqual(transaction.transaction_time, time(19, 10))
+
+    def test_envelope_transfer_is_atomic_and_keeps_ready_to_assign(self):
+        destination = Category.objects.create(
+            group=self.group, name="Servicios", position=2
+        )
+        BudgetAllocation.objects.create(
+            category=self.category,
+            month=date(2026, 1, 1),
+            assigned=Decimal("25.00"),
+        )
+        before_ready = ready_to_assign(self.user, date(2026, 1, 1))
+
+        response = self.client.post(
+            reverse("envelope-transfer"),
+            {
+                "month": "2026-01-18",
+                "source_category": self.category.id,
+                "destination_category": destination.id,
+                "amount": "100.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["month"], "2026-01-01")
+        self.assertEqual(
+            Decimal(response.data["source_allocation"]["assigned"]),
+            Decimal("-75.00"),
+        )
+        self.assertEqual(
+            Decimal(response.data["destination_allocation"]["assigned"]),
+            Decimal("100.00"),
+        )
+        rows = {row["id"]: row for row in category_budget_rows(self.user, date(2026, 1, 1))}
+        self.assertEqual(rows[self.category.id]["available"], Decimal("-75.00"))
+        self.assertEqual(rows[destination.id]["available"], Decimal("100.00"))
+        self.assertEqual(ready_to_assign(self.user, date(2026, 1, 1)), before_ready)
+
+    def test_envelope_transfer_rejects_invalid_categories_without_changes(self):
+        destination = Category.objects.create(
+            group=self.group, name="Servicios", position=2
+        )
+        foreign_group = CategoryGroup.objects.create(user=self.other, name="Ajeno")
+        foreign_category = Category.objects.create(group=foreign_group, name="Ajena")
+        url = reverse("envelope-transfer")
+        cases = [
+            {
+                "source_category": self.category.id,
+                "destination_category": self.category.id,
+                "amount": "10.00",
+            },
+            {
+                "source_category": self.category.id,
+                "destination_category": destination.id,
+                "amount": "0.00",
+            },
+            {
+                "source_category": self.category.id,
+                "destination_category": foreign_category.id,
+                "amount": "10.00",
+            },
+        ]
+        for payload in cases:
+            with self.subTest(payload=payload):
+                response = self.client.post(
+                    url, {"month": "2026-01-01", **payload}, format="json"
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        destination.is_archived = True
+        destination.save()
+        archived = self.client.post(
+            url,
+            {
+                "month": "2026-01-01",
+                "source_category": self.category.id,
+                "destination_category": destination.id,
+                "amount": "10.00",
+            },
+            format="json",
+        )
+        self.assertEqual(archived.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(BudgetAllocation.objects.exists())
+
+    def test_categorized_income_updates_activity_not_ready_to_assign(self):
+        before_ready = ready_to_assign(self.user, date(2026, 1, 1))
+        created = self.client.post(
+            reverse("transaction-list"),
+            {
+                "transaction_type": "income",
+                "date": "2026-01-20",
+                "amount": "100.00",
+                "account": self.bank.id,
+                "category": self.category.id,
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(account_balance(self.bank), Decimal("1100.00"))
+        january = category_budget_rows(self.user, date(2026, 1, 1))[0]
+        self.assertEqual(january["activity"], Decimal("100.00"))
+        self.assertEqual(january["available"], Decimal("100.00"))
+        self.assertEqual(ready_to_assign(self.user, date(2026, 1, 1)), before_ready)
+
+        uncategorized = self.client.post(
+            reverse("transaction-list"),
+            {
+                "transaction_type": "income",
+                "date": "2026-01-21",
+                "amount": "50.00",
+                "account": self.bank.id,
+            },
+            format="json",
+        )
+        self.assertEqual(uncategorized.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            ready_to_assign(self.user, date(2026, 1, 1)), before_ready + Decimal("50.00")
+        )
+
+        updated = self.client.patch(
+            reverse("transaction-detail", args=[created.data["id"]]),
+            {"date": "2026-02-01", "amount": "120.00"},
+            format="json",
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            category_budget_rows(self.user, date(2026, 1, 1))[0]["activity"],
+            Decimal("0.00"),
+        )
+        self.assertEqual(
+            category_budget_rows(self.user, date(2026, 2, 1))[0]["activity"],
+            Decimal("120.00"),
+        )
+        self.client.delete(reverse("transaction-detail", args=[created.data["id"]]))
         self.assertEqual(
             category_budget_rows(self.user, date(2026, 2, 1))[0]["activity"],
             Decimal("0.00"),

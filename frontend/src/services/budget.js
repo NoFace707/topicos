@@ -41,6 +41,9 @@ export const setCategoryArchived = (id, archived) =>
 export const saveAllocation = (allocation) =>
   apiRequest("/api/budget/allocations/", { method: "POST", body: allocation });
 
+export const transferEnvelopeFunds = (transfer) =>
+  apiRequest("/api/budget/envelope-transfers/", { method: "POST", body: transfer });
+
 export const getTransactions = (filters = {}) => {
   const query = new URLSearchParams(
     Object.entries(filters).filter(([, value]) => value !== "" && value != null)

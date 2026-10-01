@@ -72,3 +72,14 @@
 
 - [x] 11.1 Añadir una función frontend probada que encuentre el disponible de una categoría en el resumen mensual y solo sugiera importes positivos.
 - [x] 11.2 Precargar el importe editable al seleccionar una categoría durante la creación de un gasto, conservar importes al editar y verificar pruebas, build e interacción real.
+
+## 12. Contraparte, detalles y hora de movimientos
+
+- [x] 12.1 Añadir contraparte y hora al modelo y API de transacciones, crear una migración compatible con datos existentes y cubrir creación, edición y serialización con pruebas de Django.
+- [x] 12.2 Ampliar el formulario e historial de movimientos con contraparte dinámica, detalles y hora editables, y verificar pruebas, build e interacción real.
+
+## 13. Operaciones avanzadas de sobres e ingresos
+
+- [x] 13.1 Implementar la API atómica de movimiento entre sobres y los cálculos de ingresos categorizados, incluyendo validaciones, aislamiento y pruebas de regresión contable.
+- [x] 13.2 Añadir expresiones seguras de suma/resta, el diálogo de movimiento desde Disponible y la categoría opcional de ingresos en el frontend, con pruebas unitarias de la evaluación.
+- [x] 13.3 Ejecutar pruebas completas de backend y frontend, build, comprobaciones Django y validación estricta de OpenSpec, corrigiendo cualquier regresión.

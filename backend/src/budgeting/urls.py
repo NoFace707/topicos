@@ -7,6 +7,7 @@ from .views import (
     CategoryGroupViewSet,
     CategoryViewSet,
     DashboardView,
+    EnvelopeTransferView,
     FinancialTransactionViewSet,
 )
 
@@ -20,6 +21,7 @@ router.register("transactions", FinancialTransactionViewSet, basename="transacti
 
 urlpatterns = [
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("envelope-transfers/", EnvelopeTransferView.as_view(), name="envelope-transfer"),
     path("", include(router.urls)),
 ]
 

@@ -43,9 +43,9 @@ Esta decisión permite un saldo total significativo. Añadir selección y conver
 Se persistirán saldos iniciales, transacciones y asignaciones mensuales. Los saldos actuales, la actividad mensual, el disponible y el dinero listo para asignar se calcularán en el servidor a partir de esos hechos:
 
 - `saldo_cuenta = saldo_inicial + ingresos + transferencias_entrantes - gastos - transferencias_salientes`
-- `actividad_categoria_mes = - suma(gastos de la categoria fechados en el mes)`
+- `actividad_categoria_mes = suma(ingresos categorizados) - suma(gastos de la categoria fechados en el mes)`
 - `disponible_categoria_mes = disponible_mes_anterior + asignado_mes + actividad_mes`
-- `listo_para_asignar_mes = saldos_iniciales_presupuestables + ingresos acumulados - asignaciones acumuladas`
+- `listo_para_asignar_mes = saldos_iniciales_presupuestables + ingresos sin categoria acumulados - asignaciones acumuladas`
 
 Los saldos iniciales de efectivo y banco serán presupuestables; el saldo inicial de tarjeta no creará dinero para asignar. Los valores negativos se conservarán y mostrarán. Se prefieren valores derivados sobre contadores mutables para evitar desincronización al editar o eliminar movimientos. Si el volumen futuro lo requiere, se podrán añadir resúmenes materializados sin cambiar el contrato.
 
@@ -55,7 +55,7 @@ Los saldos iniciales de efectivo y banco serán presupuestables; el saldo inicia
 - Grupo de categorías: propietario, nombre, orden y estado archivado.
 - Categoría: grupo, nombre, orden y estado archivado; su propietario se deriva y se valida a través del grupo.
 - Asignación mensual: categoría, mes normalizado al primer día e importe; será única por categoría y mes.
-- Transacción: propietario, tipo, fecha, importe positivo, concepto y cuenta principal; gasto exige categoría, ingreso no la usa y transferencia exige una cuenta destino distinta.
+- Transacción: propietario, tipo, fecha, importe positivo, concepto y cuenta principal; gasto exige categoría, ingreso la acepta opcionalmente y transferencia exige una cuenta destino distinta.
 
 Una transferencia será una sola entidad canónica con cuenta origen y destino. Los dos efectos se calcularán desde ella dentro de una transacción de base de datos, evitando que un lado quede huérfano. La alternativa de dos movimientos enlazados facilita algunos listados, pero añade sincronización y riesgo de pares inconsistentes.
 
@@ -76,6 +76,14 @@ Los gastos continuarán registrándose en transacciones; la columna actividad se
 La posición seguirá persistida para conservar un orden estable, pero será un detalle interno: al crear un grupo se asignará la posición siguiente entre los grupos del usuario y, al crear una categoría, la siguiente dentro de su grupo. Los formularios no pedirán este número. Al editar se conservará la posición existente; si una categoría cambia de grupo sin una posición explícita, se añadirá al final del grupo destino. La API continuará aceptando una posición explícita para habilitar un futuro reordenamiento visual.
 
 En la creación de un gasto, la selección de categoría consultará el resumen presupuestario correspondiente al mes de la fecha elegida y precargará el importe con su disponible positivo. El campo seguirá siendo editable y la precarga no guardará ningún movimiento por sí sola. Si el disponible es cero o negativo, el importe quedará vacío. Esta ayuda no se aplicará al editar un movimiento existente, ni a ingresos o transferencias, para no sustituir valores registrados ni introducir reglas ajenas a categorías.
+
+Cada transacción almacenará fecha y hora por separado, una contraparte textual opcional y detalles opcionales. La contraparte representará a quién se pagó en un gasto o quién pagó en un ingreso; no será necesaria en transferencias internas porque las cuentas origen y destino ya identifican a las partes. El campo existente de concepto se conservará en base de datos como `memo`, pero la interfaz lo presentará como “Detalles” para evitar una migración destructiva. Los movimientos históricos recibirán `00:00` como hora durante la migración y conservarán intacto su concepto previo.
+
+La celda de asignación aceptará expresiones locales limitadas a importes decimales y operadores de suma o resta. El navegador evaluará la expresión en centavos, sin `eval`, y enviará a la API únicamente el resultado decimal absoluto. El servidor conservará su contrato de asignación idempotente.
+
+Mover dinero entre sobres será una operación explícita y atómica de la API que bloqueará las dos asignaciones del mes y aplicará importes opuestos. No se persistirá una entidad adicional de historial: las asignaciones mensuales seguirán siendo la fuente de verdad. La operación permitirá que el origen quede negativo, de acuerdo con la política existente de conservar déficits.
+
+Un ingreso sin categoría seguirá alimentando dinero listo para asignar. Si el usuario selecciona una categoría, el ingreso se incluirá como actividad positiva del sobre y se excluirá de dinero listo para asignar, evitando contabilizar el mismo dinero dos veces.
 
 ## Risks / Trade-offs
 

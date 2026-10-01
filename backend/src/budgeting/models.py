@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import time
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -118,7 +119,9 @@ class FinancialTransaction(models.Model):
     )
     transaction_type = models.CharField(max_length=20, choices=Type.choices)
     date = models.DateField()
+    transaction_time = models.TimeField(default=time(0, 0))
     amount = models.DecimalField(max_digits=14, decimal_places=2)
+    counterparty = models.CharField(max_length=120, blank=True)
     memo = models.CharField(max_length=255, blank=True)
     account = models.ForeignKey(
         Account, on_delete=models.PROTECT, related_name="transactions"
@@ -141,7 +144,7 @@ class FinancialTransaction(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-date", "-id"]
+        ordering = ["-date", "-transaction_time", "-id"]
         constraints = [
             models.CheckConstraint(
                 condition=Q(amount__gt=0), name="transaction_amount_positive"
@@ -174,8 +177,10 @@ class FinancialTransaction(models.Model):
             if self.destination_account_id:
                 errors["destination_account"] = "Un gasto no usa cuenta destino."
         elif self.transaction_type == self.Type.INCOME:
-            if self.category_id:
-                errors["category"] = "Un ingreso no usa categoría."
+            if self.category_id and self.category.user_id != self.user_id:
+                errors["category"] = "La categoría no pertenece al usuario."
+            elif self.category_id and self.category.is_archived:
+                errors["category"] = "La categoría está archivada."
             if self.destination_account_id:
                 errors["destination_account"] = "Un ingreso no usa cuenta destino."
         elif self.transaction_type == self.Type.TRANSFER:
@@ -195,4 +200,3 @@ class FinancialTransaction(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
-

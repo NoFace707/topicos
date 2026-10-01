@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction as db_transaction
 from django.db.models import Max
@@ -112,6 +114,87 @@ class BudgetAllocationSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class EnvelopeTransferSerializer(serializers.Serializer):
+    month = serializers.DateField()
+    source_category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.select_related("group").all()
+    )
+    destination_category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.select_related("group").all()
+    )
+    amount = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=Decimal("0.01")
+    )
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+        source = attrs["source_category"]
+        destination = attrs["destination_category"]
+        if source.id == destination.id:
+            raise serializers.ValidationError(
+                {"destination_category": "El sobre destino debe ser diferente al origen."}
+            )
+        for field, category in (
+            ("source_category", source),
+            ("destination_category", destination),
+        ):
+            if category.user_id != user.id:
+                raise serializers.ValidationError(
+                    {field: "La categoría no está disponible."}
+                )
+            if category.is_archived or category.group.is_archived:
+                raise serializers.ValidationError({field: "La categoría está archivada."})
+        attrs["month"] = attrs["month"].replace(day=1)
+        return attrs
+
+    @db_transaction.atomic
+    def create(self, validated_data):
+        user = self.context["request"].user
+        source_id = validated_data["source_category"].id
+        destination_id = validated_data["destination_category"].id
+        category_ids = sorted([source_id, destination_id])
+        locked_categories = {
+            category.id: category
+            for category in Category.objects.select_for_update()
+            .select_related("group")
+            .filter(id__in=category_ids, group__user=user)
+            .order_by("id")
+        }
+        if set(locked_categories) != set(category_ids):
+            raise serializers.ValidationError("Uno de los sobres no está disponible.")
+        if any(
+            category.is_archived or category.group.is_archived
+            for category in locked_categories.values()
+        ):
+            raise serializers.ValidationError("No se puede mover dinero con sobres archivados.")
+
+        month = validated_data["month"]
+        for category_id in category_ids:
+            BudgetAllocation.objects.get_or_create(
+                category=locked_categories[category_id],
+                month=month,
+                defaults={"assigned": Decimal("0.00")},
+            )
+        allocations = {
+            allocation.category_id: allocation
+            for allocation in BudgetAllocation.objects.select_for_update()
+            .filter(category_id__in=category_ids, month=month)
+            .order_by("category_id")
+        }
+        amount = validated_data["amount"]
+        source_allocation = allocations[source_id]
+        destination_allocation = allocations[destination_id]
+        source_allocation.assigned -= amount
+        destination_allocation.assigned += amount
+        source_allocation.save(update_fields=["assigned", "updated_at"])
+        destination_allocation.save(update_fields=["assigned", "updated_at"])
+        return {
+            "month": month,
+            "source_allocation": source_allocation,
+            "destination_allocation": destination_allocation,
+        }
+
+
 class FinancialTransactionSerializer(serializers.ModelSerializer):
     account_name = serializers.CharField(source="account.name", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
@@ -125,7 +208,9 @@ class FinancialTransactionSerializer(serializers.ModelSerializer):
             "id",
             "transaction_type",
             "date",
+            "transaction_time",
             "amount",
+            "counterparty",
             "memo",
             "account",
             "account_name",
@@ -152,7 +237,13 @@ class FinancialTransactionSerializer(serializers.ModelSerializer):
                 "transaction_type", getattr(self.instance, "transaction_type", None)
             ),
             "date": attrs.get("date", getattr(self.instance, "date", None)),
+            "transaction_time": attrs.get(
+                "transaction_time", getattr(self.instance, "transaction_time", None)
+            ),
             "amount": attrs.get("amount", getattr(self.instance, "amount", None)),
+            "counterparty": attrs.get(
+                "counterparty", getattr(self.instance, "counterparty", "")
+            ),
             "memo": attrs.get("memo", getattr(self.instance, "memo", "")),
             "account": attrs.get("account", getattr(self.instance, "account", None)),
             "category": attrs.get("category", getattr(self.instance, "category", None)),

@@ -14,6 +14,7 @@ from .serializers import (
     BudgetAllocationSerializer,
     CategoryGroupSerializer,
     CategorySerializer,
+    EnvelopeTransferSerializer,
     FinancialTransactionSerializer,
 )
 from .services import bulk_account_balances, dashboard_payload, month_start
@@ -168,6 +169,27 @@ class FinancialTransactionViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_destroy(self, instance):
         instance.delete()
+
+
+class EnvelopeTransferView(APIView):
+    def post(self, request):
+        serializer = EnvelopeTransferSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        allocation_context = {"request": request}
+        return Response(
+            {
+                "month": result["month"].isoformat(),
+                "source_allocation": BudgetAllocationSerializer(
+                    result["source_allocation"], context=allocation_context
+                ).data,
+                "destination_allocation": BudgetAllocationSerializer(
+                    result["destination_allocation"], context=allocation_context
+                ).data,
+            }
+        )
 
 
 class DashboardView(APIView):

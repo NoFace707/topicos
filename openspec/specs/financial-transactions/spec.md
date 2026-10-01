@@ -1,18 +1,24 @@
+# financial-transactions Specification
+
 ## Purpose
 
 Registrar manualmente ingresos, gastos y transferencias para mantener coherentes los saldos de cuentas y la actividad del presupuesto.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Registro de ingresos
-El sistema SHALL permitir registrar un ingreso con cuenta de destino, fecha, importe positivo y concepto opcional.
+El sistema SHALL permitir registrar un ingreso con cuenta de destino, fecha, hora, importe positivo, nombre opcional de quien paga, detalles opcionales y una categoría activa opcional.
 
 #### Scenario: Crear un ingreso
-- **WHEN** un usuario registra un ingreso válido en una cuenta activa propia
+- **WHEN** un usuario registra un ingreso válido sin categoría en una cuenta activa propia
 - **THEN** el saldo de la cuenta y el dinero listo para asignar aumentan por el importe registrado
 
+#### Scenario: Crear un ingreso dirigido a un sobre
+- **WHEN** un usuario registra un ingreso válido con una categoría activa propia
+- **THEN** el saldo de la cuenta aumenta, la actividad y el disponible de la categoría aumentan y el dinero listo para asignar no cambia
+
 ### Requirement: Registro de gastos
-El sistema SHALL permitir registrar un gasto con cuenta de origen, categoría activa, fecha, importe positivo y concepto opcional.
+El sistema SHALL permitir registrar un gasto con cuenta de origen, categoría activa, fecha, hora, importe positivo, nombre opcional de quien recibe el pago y detalles opcionales.
 
 #### Scenario: Crear un gasto
 - **WHEN** un usuario registra un gasto válido en una cuenta activa y categoría propias
@@ -21,6 +27,21 @@ El sistema SHALL permitir registrar un gasto con cuenta de origen, categoría ac
 #### Scenario: Gasto con fondos insuficientes
 - **WHEN** un usuario registra un gasto superior al saldo de la cuenta o al disponible de la categoría
 - **THEN** el sistema permite el registro y presenta los saldos negativos correspondientes
+
+### Requirement: Contraparte, detalles y hora
+El sistema SHALL conservar y presentar por separado la hora del movimiento, su contraparte y sus detalles; la contraparte SHALL ser opcional y su significado dependerá de si el movimiento es ingreso o gasto.
+
+#### Scenario: Registrar a quién se pagó
+- **WHEN** un usuario crea un gasto e indica una persona o comercio receptor
+- **THEN** el sistema conserva ese nombre junto con la hora y los detalles del gasto
+
+#### Scenario: Registrar quién pagó
+- **WHEN** un usuario crea un ingreso e indica quién realizó el pago
+- **THEN** el sistema conserva ese nombre junto con la hora y los detalles del ingreso
+
+#### Scenario: Consultar el historial
+- **WHEN** el usuario consulta sus movimientos
+- **THEN** cada fila presenta fecha, hora, contraparte cuando exista y detalles sin confundir ambos textos
 
 ### Requirement: Importe sugerido desde la categoría
 Al crear un gasto, el sistema SHALL precargar el importe editable con el disponible positivo de la categoría seleccionada para el mes de la fecha del movimiento, sin registrar el gasto hasta que el usuario confirme el formulario.

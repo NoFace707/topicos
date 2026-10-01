@@ -104,6 +104,21 @@ def category_budget_rows(user, selected_month):
         if row["date__year"] == selected_month.year and row["date__month"] == selected_month.month:
             activity_month[row["category_id"]] += amount
 
+    for row in (
+        FinancialTransaction.objects.filter(
+            user=user,
+            transaction_type=FinancialTransaction.Type.INCOME,
+            category_id__in=category_ids,
+            date__lt=following_month,
+        )
+        .values("category_id", "date__year", "date__month")
+        .annotate(total=Sum("amount"))
+    ):
+        amount = row["total"] or ZERO
+        activity_total[row["category_id"]] += amount
+        if row["date__year"] == selected_month.year and row["date__month"] == selected_month.month:
+            activity_month[row["category_id"]] += amount
+
     rows = []
     for category in categories:
         rows.append(
@@ -139,6 +154,7 @@ def ready_to_assign(user, selected_month):
         FinancialTransaction.objects.filter(
             user=user,
             transaction_type=FinancialTransaction.Type.INCOME,
+            category__isnull=True,
             account__account_type__in=[Account.Type.CASH, Account.Type.BANK],
             date__lt=following_month,
         ).aggregate(total=Sum("amount"))["total"]

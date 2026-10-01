@@ -8,7 +8,9 @@ El proyecto solo dispone de la infraestructura React, Django y PostgreSQL y de u
 - Permitir administrar cuentas manuales de efectivo, banco y tarjeta.
 - Permitir organizar categorías dentro de grupos directamente en la vista de presupuesto, de modo que su relación sea visible y editable en un único flujo.
 - Incorporar un presupuesto mensual con importes asignados editables en cada fila, actividad y disponible, incluyendo el arrastre del disponible entre meses.
+- Permitir cálculos de suma y resta en las asignaciones y mover fondos directamente entre sobres sin alterar el dinero listo para asignar.
 - Permitir registrar ingresos, gastos y transferencias entre cuentas propias.
+- Permitir que un ingreso se dirija opcionalmente a un sobre como actividad positiva, en lugar de pasar por dinero listo para asignar.
 - Añadir un dashboard con saldo total, dinero listo para asignar y resumen del presupuesto actual.
 - Mantener toda la captura de información financiera manual; no se añadirá conexión ni importación de cuentas bancarias.
 - Dejar fuera del MVP la recuperación de contraseña, la verificación de correo, las transacciones programadas, la conciliación avanzada, las metas y las reglas especiales de pago de tarjeta.
